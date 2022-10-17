@@ -1,0 +1,27 @@
+
+illumina_path:
+    A006200072: /prj/Niels_Gehring/batchMar_19W14/workflow/mapping
+    A006200074: /prj/Niels_Gehring/KD_different_cell_lines_with_SMG6_SMG7/batchMar2_19W14/workflow/mapping
+    A006200075: /prj/Niels_Gehring/KD_different_cell_lines_with_SMG6_SMG7/batch3_19W14/workflow/mapping
+
+illumina_suffix: 
+    L002_STARmapping/Aligned.noS.bam
+
+nanopore_path:
+     /prj/Niels_Gehring/DFG_seq_Nanopore/bams
+    
+nanopore_samples:
+    Luc_1: 40-4_DRS_all_pass.bam
+    Luc_2: 40-5_DRS_all_pass.bam
+    Luc_3: 40-6_DRS_all_pass.bam
+    Luc_4: 40-7_DRS_all_pass.bam
+    SMG7KO_6KD_1: 40-8_DRS_all_pass.bam
+    SMG7KO_6KD_2: 40-9_DRS_all_pass.bam 
+    SMG7KO_6KD_3: 40-10_DRS_all_pass.bam
+    SMG7KO_6KD_4: 40-11_DRS_all_pass.bam
+
+ref: 
+    /prj/Niels_Gehring/DFG_seq_Nanopore/GRCh38_90_SIRV_Set3.gtf
+ref_fa: 
+    /prj/Niels_Gehring/smg_ko/analysis/baltica/GRCh38_90_SIRV_Set3_oneCol.fa
+

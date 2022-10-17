@@ -1,0 +1,335 @@
+"""
+Usage:
+snakemake --jobs 10 --cores 10 --profile slurm --printshellcmds --reason --use-singularity --use-conda
+"""
+from os import symlink, path
+from itertools import groupby
+
+from pathlib import Path
+from snakemake.utils import min_version
+import pandas as pd
+import numpy as np
+
+min_version("5.17")
+
+
+configfile: "../config/config.yaml"
+
+
+include: "utils.smk"
+
+
+df = pd.read_csv("config/metadata_w_files.csv")
+name = df["CCG_Sample_ID"]
+paths = df["bams"]
+platform = df["platform"]
+
+paired = {
+    # control
+    "control_1": ["A006200072_119951", "40-4"],
+    "control_2": ["A006200072_119954", "40-5"],
+    "control_3": ["A006200072_119956", "40-6"],
+    # KO
+    "SMG6kd_SMG7ko_1": ["A006200072_119976", "40-8"],
+    "SMG6kd_SMG7ko_2": ["A006200072_119978", "40-9"],
+    "SMG6kd_SMG7ko_3": ["A006200072_119980", "40-10"],
+}
+
+
+localrules:
+    symlink,
+    clean_transcriptome,
+    create_selected_region,
+    clean_fasta,
+
+
+rule all:
+    input:
+        expand("mappings/{platform}/{name}.bam", zip, name=name, platform=platform),
+        expand("stringtie_mix/{name}.gtf", name=paired.keys()),
+        "stringtie_merge/merged_mix.gtf",
+        expand("stringtie_each/{name}.gtf", name=name[platform == "illumina"]),
+        "stringtie_merge/merged_each.gtf",
+        expand("salmon/{name}/quant.sf", name=name[platform == "illumina"]),
+        "transdecoder/longest_orfs.cds.best_candidates.gff3",
+        "transdecoder/longest_orfs.cds.best_candidates.genome.gff3",
+        "compared/cds.combined.gtf"
+
+
+rule symlink:
+    input:
+        bam=expand("{path}", path=paths),
+        bai=expand("{path}.bai", path=paths),
+    output:
+        bam=expand(
+            "mappings/{platform}/{name}.bam", zip, name=name, platform=platform
+        ),
+        bai=expand(
+            "mappings/{platform}/{name}.bam.bai", zip, name=name, platform=platform
+        ),
+    run:
+        for bam_in, bai_in, bam_out, bai_out in zip(
+            input.bam, input.bai, output.bam, output.bai
+        ):
+            symlink(bam_in, bam_out)
+            symlink(bai_in, bai_out)
+
+
+        # The pcDNA5 contig is given problems
+
+
+
+rule create_selected_region:
+    input:
+        config["ref_fa"] + ".fai",
+    output:
+        "selected_region.bed",
+    params:
+        regex=r'/^[0-9XY]*\t/ {printf("\%s\t0\t%s\n",$1,$2);}',
+    shell:
+        "awk '{params.regex}' {input} > {output}"
+
+
+rule clean_transcriptome:
+    input:
+        config["ref"],
+    output:
+        "ref.clean.gtf",
+    shell:
+        "grep -v SIRVomeERCCome {input} | grep -v pcDNA5 > {output}"
+
+
+rule subset_aligments:
+    input:
+        "selected_region.bed",
+        "mappings/{platform}/{name}.bam",
+    output:
+        "mappings_selected/{platform}/{name}.bam",
+    shell:
+        "samtools view -b -L {input[0]} {input[1]} > {output[0]}; "
+        "samtools index {output[0]} "
+
+
+rule stringtie_mix:
+    input:
+        "ref.clean.gtf",
+        lambda wc: get_mix(wc),
+    output:
+        "stringtie_mix/{name}.gtf",
+    params:
+        strandness="--rf",
+        extra="--mix",
+    threads: 20
+    conda:
+        "envs/stringtie.yaml"
+    shell:
+        " stringtie -v -o {output} -p {threads}"
+        " {params.strandness}"
+        " -G {input[0]} {params.extra}"
+        " {input[1]} {input[2]} "
+
+
+rule stringtie_merge_mix:
+    input:
+        expand("stringtie_mix/{name}.gtf", name=paired.keys()),
+    output:
+        "stringtie_merge/merged_mix.gtf",
+    params:
+        min_iso_prop=0.1,
+        min_cov=3,
+        ref=config["ref"],
+    threads: 10
+    conda:
+        "envs/stringtie.yaml"
+    shell:
+        "stringtie --merge {input} -o {output} -p {threads} "
+        "-c {params.min_cov} "
+        "-f {params.min_iso_prop} "
+        "-G {params.ref}  "
+
+
+rule stringtie_each:
+    input:
+        ref="stringtie_merge/merged_mix.gtf",
+        sample="mappings/illumina/{name}.bam",
+    output:
+        "stringtie_each/{name}.gtf",
+    params:
+        strandness="--rf",
+    threads: 20
+    conda:
+        "envs/stringtie.yaml"
+    shell:
+        " stringtie -o {output} -p {threads}"
+        " {params.strandness}"
+        " -G {input.ref}"
+        " {input.sample}"
+
+
+rule stringtie_merge_each:
+    input:
+        expand("stringtie_each/{name}.gtf", name=name[platform == "illumina"]),
+        ref="stringtie_merge/merged_mix.gtf",
+    output:
+        "stringtie_merge/merged_each.gtf",
+    params:
+        min_iso_prop=0.1,
+        min_cov=3,
+    threads: 10
+    conda:
+        "envs/stringtie.yaml"
+    shell:
+        "stringtie --merge {input} -o {output} -p {threads} "
+        "-c {params.min_cov} "
+        "-f {params.min_iso_prop} "
+        "-G {input.ref}  "
+
+
+# these cleans the fasta file of entries with duplicate ids
+rule build_transcriptome:
+    input:
+        fasta=config["ref_fa"],
+        gtf="stringtie_merge/merged_each.gtf",
+    output:
+        "fasta/transcriptome.fa",
+    conda:
+        "envs/transdecoder.yaml"
+    shell:
+        "gtf_genome_to_cdna_fasta.pl {input[1]} {input[0]} > {output}"
+
+
+rule gtf_to_gff:
+    input:
+        "stringtie_merge/merged_each.gtf",
+    output:
+        "transdecoder/merged.clean.gff3",
+    conda:
+        "envs/transdecoder.yaml"
+    shell:
+        "gtf_to_alignment_gff3.pl {input} > {output}"
+
+
+rule clean_fasta:
+    input:
+        "fasta/transcriptome.fa",
+    output:
+        "fasta/transcriptome.clean.fa",
+    params:
+        regex=r"/^>/{f=!d[$1];d[$1]=1}f",
+    shell:
+        "awk '{params.regex}' {input} > {output}"
+
+
+rule salmon_build_decoy:
+    input:
+        transcriptome="fasta/transcriptome.clean.fa",
+        genome=config["ref_fa"],
+    output:
+        gentrome="salmon/gentrome.fa",
+        decoys="salmon/coys.txt",
+    threads: 2
+    envmodules:
+        "salmon/1.9.0",
+    log:
+        "logs/decoys.log",
+    wrapper:
+        "v1.7.1/bio/salmon/decoys"
+
+
+rule salmon_index:
+    input:
+        transcriptome="salmon/gentrome.fa",
+        decoys="salmon/decoys.txt",
+    output:
+        directory("salmon/transcriptome_index"),
+    log:
+        "logs/salmon/transcriptome_index.log",
+    threads: 20
+    envmodules:
+        "salmon/1.9.0",
+    shell:
+        " salmon index "
+        " --decoys {input.decoys} "
+        " -t {input.transcriptome} "
+        " -i {output} "
+        " -p {threads} "
+
+
+rule salmon_quant:
+    input:
+        unpack(get_raw_fastq),
+        index="salmon/transcriptome_index",
+    output:
+        "salmon/{name}/quant.sf",
+    threads: 20
+    envmodules:
+        "salmon/1.9.0",
+    shell:
+        "salmon quant -p {threads} -i {input.index} "
+        "--libType A "
+        "--gcBias --numGibbsSamples 20 --thinningFactor 100 --validateMappings "
+        "-1 <(gunzip -c {input.r1}) "
+        "-2 <(gunzip -c {input.r2}) "
+        "-o salmon/{wildcards.name}/ "
+
+
+## Transdecoder
+rule transdecoder_longorfs:
+    input:
+        "fasta/transcriptome.clean.fa",
+    output:
+        "transdecoder/longest_orfs.gff3",
+        "transdecoder/longest_orfs.cds.best_candidates.gff3",
+    conda:
+        "envs/transdecoder.yaml"
+    params:
+        min_protein_length=40,
+        strand_specific="-S",
+        prefix=lambda wildcards, output: output[0][:12],
+    shell:
+        "TransDecoder.LongOrfs -t {input} --output_dir {params.prefix} "
+        " -m {params.min_protein_length} "
+        " {params.strand_specific};  "
+        "TransDecoder.Predict -t {input} --output_dir {params.prefix} "
+        " --single_best_only "
+
+
+rule cds_to_genome:
+    input:
+        best="transdecoder/longest_orfs.cds.best_candidates.gff3",
+        gff="transdecoder/merged.clean.gff3",
+        fa="fasta/transcriptome.clean.fa",
+    output:
+        "transdecoder/longest_orfs.cds.best_candidates.genome.gff3",
+    conda:
+        "envs/transdecoder.yaml"
+    shell:
+        "cdna_alignment_orf_to_genome_orf.pl "
+        "{input.best} {input.gff} {input.fa} "
+        " > {output}"
+
+
+rule extract_CDS:
+    input:
+        "transdecoder/longest_orfs.cds.best_candidates.genome.gff3",
+        config["ref"],
+    output:
+        "transdecoder/cds.best_candidates.genome.gff3",
+        "data/ref_cds.gtf",
+    shell:
+        "awk '($3==\"CDS\")' {input[0]} > {output[0]};"
+        "awk '($3==\"CDS\")' {input[1]} > {output[1]}"
+
+
+rule compare_CDS:
+    input:
+        "transdecoder/cds.best_candidates.genome.gff3",
+        "data/ref_cds.gtf",
+    output:
+        "compared/cds.combined.gtf"
+    conda:
+        "envs/gffcompare.yaml"
+    params:
+        prefix=lambda wildcards, output: output[0][:12]
+    shell:
+        "gffcompare -R -Q -D -r {input[1]} {input[0]} -o {params.prefix}"
