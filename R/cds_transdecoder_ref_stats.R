@@ -1,10 +1,15 @@
 # how many transcripts.
 # How many are novel?
 # How many have CDS
-# How many are NMD
+# How many are NMDj
 # How many with full lenght evidence?
 # and sets
 # Waterfall plot
+library(dplyr)
+library(GenomicFeatures)
+library(ggplot2)
+library(ROCR)
+library(caret)
 
 compared <- rtracklayer::import("phase2/compared/cds.combined.gtf")
 compared <- subset(compared, type == 'transcript')
@@ -19,7 +24,7 @@ trd <- trd[grepl(x=trd$Name, pattern = 'ORF type:complete') ,]
 trd$score <- gsub(trd$Name, pattern = ".*,score=([0-9.]+)$", replacement = "\\1")
 
 sum(trd$type == 'mRNA')
-n_distinct(trd[trd$type == 'CDS']$ID)
+#n_distinct(trd[trd$type == 'CDS']$ID)
 length(compared)
 sort(table(compared$class_code), decreasing = T)
 # 245,447 transcripts with CDS
@@ -36,7 +41,7 @@ compared_df <- compared %>%
 trd_df <- trd %>% 
   mcols() %>% 
   as_tibble() %>% 
-  select(ID, score) %>% 
+  dplyr::select(ID, score) %>% 
   dplyr::rename(oId = ID)
 
 x <- left_join(trd_df, compared_df) %>% 
@@ -71,22 +76,71 @@ x %>%
   geom_text(
     aes(
       x=cuttoff, 
-      label=str_glue("5% quantile ({cuttoff})"), 
+      label=stringr::str_glue("5% quantile ({cuttoff})"), 
       y=0.06), 
     colour="red", 
     check_overlap = TRUE)
 # interestingly class_code of U and NA have a should < cutoff
 # other are stable > cutoff
   
-library(ROCR)
-x2 <- x %>% filter(class_code %in% c("=", NA))
-labels = ifelse(x2$class_code == '=', 1, -1)
-labels[is.na(labels)] <- -1
+x2 <- x %>% filter(class_code %in% c("=", "u"))
+labels = ifelse(x2$class_code == "=", 1, -1)
+#labels[is.na(labels)] <- -1
 predictions = scale(x2$score)
 predictions[is.na(predictions)] <- min(predictions, na.rm = T)
 pred <- prediction(predictions, labels)
 perf <- performance(pred, measure = "tpr", x.measure = "fpr")
-plot(perf, col=rainbow(10))
-plot(perf, lty=3, col="grey78", add=TRUE)
+plot(perf, colorize=TRUE)
+abline(a = 0, b = 1)
 
-# does not look brilliant, but expected
+auc_ROCR <- performance(pred, measure = "auc")
+auc_ROCR <- auc_ROCR@y.values[[1]]
+
+data.frame(x=perf@x.values[[1]],y=perf@y.values[[1]]) %>% 
+  ggplot(aes(x=x,y=y))  +
+   geom_path(size=1) +
+   geom_segment(aes(x=0,y=0,xend=1,yend=1),colour="black",linetype= 2) +
+   annotate("text", x=0.90, y= 0, label=paste(sep = "", "AUC = ", round(auc_ROCR,2)),colour="black") +
+   scale_x_continuous(name= "False positive rate") +
+   scale_y_continuous(name= "True positive rate") + 
+  theme_bw()
+
+xtab <- table(
+  factor(ifelse(x2$score > cuttoff, 1, -1), levels = c(1, -1)), 
+  factor(labels, levels = c(1, -1)))
+confusionMatrix(xtab)
+
+ggplot(x2, aes(x = score)) + 
+  geom_histogram(binwidth = .05) + 
+  # facet_wrap(~obs) + 
+  xlab("Probability of Class #1")
+
+# maybe check this: https://cran.r-project.org/web/packages/OptimalCutpoints/
+
+# second test
+x3 <- x 
+labels = ifelse(x3$class_code == "=", 1, -1)
+labels[is.na(labels)] <- -1
+predictions = scale(x3$score)
+predictions[is.na(predictions)] <- min(predictions, na.rm = T)
+pred <- prediction(predictions, labels)
+perf <- performance(pred, measure = "tpr", x.measure = "fpr")
+plot(perf, colorize=TRUE)
+abline(a = 0, b = 1)
+
+auc_ROCR <- performance(pred, measure = "auc")
+auc_ROCR <- auc_ROCR@y.values[[1]]
+
+data.frame(x=perf@x.values[[1]],y=perf@y.values[[1]]) %>% 
+  ggplot(aes(x=x,y=y))  +
+  geom_path(size=1) +
+  geom_segment(aes(x=0,y=0,xend=1,yend=1),colour="black",linetype= 2) +
+  annotate("text", x=0.90, y= 0, label=paste(sep = "", "AUC = ", round(auc_ROCR,2)),colour="black") +
+  scale_x_continuous(name= "False positive rate") +
+  scale_y_continuous(name= "True positive rate") + 
+  theme_bw()
+
+xtab <- table(
+  factor(ifelse(x3$score > cuttoff, 1, -1), levels = c(1, -1)), 
+  factor(labels, levels = c(1, -1)))
+confusionMatrix(xtab)
