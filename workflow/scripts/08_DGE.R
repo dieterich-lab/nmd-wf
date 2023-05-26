@@ -3,6 +3,7 @@ suppressPackageStartupMessages({
   library(dplyr)
   library(DESeq2)
   library(IHW)
+  library(PCAtools)
 })
 
 snakemake@source('utils.R')
@@ -30,11 +31,28 @@ dds <- DESeqDataSetFromTximport(
   colData = metadata[, c('group', 'cellline')],
   design = ~cellline+group)
 
-message(nrow(dds))
-keep <- rowSums(counts(dds) >= 10) >= 3
-dds <- dds[keep,]
-message(nrow(dds))
-dds <- DESeq(dds)
+vst <- assay(vst(dds))
+p <- pca(vst, metadata = colData(dds), removeVar = 0.1)
+suppressWarnings({horn <- parallelPCA(vst)}) 
+screeplot(
+  p,
+  components = getComponents(p, 1:30),
+  vline = c(horn$n)) +
+  geom_label(
+    aes(x = horn$n + 1, y = 50, label = 'Horn\'s', vjust = -1, size = 8))
+
+pdf("results/dge_pca.pdf", height = 10, width = 20)
+biplot(
+  p, 
+  showLoadings = FALSE,
+  lab = NULL,
+  pointSize = 3, 
+  colby = 'group', 
+  shape = 'cellline',
+  legendPosition = 'right', 
+  hline = 0, 
+  vline = 0) 
+dev.off()
 
 contrasts <- data.frame(
   treat=c(
@@ -49,6 +67,9 @@ contrasts <- data.frame(
     "LucKD_NoKO",
     "LucKD_NoKO"
   )) 
+
+message("Number of genes:", nrow(dds))
+dds <- DESeq(dds)
 
 results <- apply(contrasts, 1, function(x) {
   deseq_results(dds, x[1], x[2])

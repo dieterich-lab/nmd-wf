@@ -1,0 +1,5 @@
+name: gffcompare
+channels:
+  - bioconda
+dependencies:
+  - gffcompare=0.11.2
