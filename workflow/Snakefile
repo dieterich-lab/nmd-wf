@@ -52,14 +52,12 @@ rule all:
         expand("stringtie_each/{name}.gtf", name=name[platform == "illumina"]),
         "stringtie_merge/merged_each.gtf",
         expand("salmon/{name}/quant.sf", name=name[platform == "illumina"]),
-        "transdecoder/longest_orfs.cds.best_candidates.gff3",
         "transdecoder/longest_orfs.cds.best_candidates.genome.gff3",
         "compared/cds.combined.gtf",
         "data/gene_counts.RDS",
         "data/combined_cds.RDS",
         "data/cds_seq.RDS",
         "data/dge_results.RDS",
-        "results/dge_pca.pdf",
         "data/dte_results.RDS"
 
 
@@ -201,6 +199,8 @@ rule fix_stringtie_merge:
         "stringtie_merge/merged_each.fix.gtf",
     envmodules:
         "R/4.2.1_deb11"
+    resources:
+        mem_mb=16000
     script:
         "scripts/fix_stringtie_merge.R"
 
@@ -264,6 +264,8 @@ rule salmon_index:
         directory("salmon/transcriptome_index"),
     log:
         "logs/salmon/transcriptome_index.log",
+    resources:
+        mem_mb=32000
     threads: 20
     envmodules:
         "salmon/1.9.0",
@@ -282,6 +284,8 @@ rule salmon_quant:
     output:
         "salmon/{name}/quant.sf",
     threads: 20
+    resources:
+        mem_mb=32000
     envmodules:
         "salmon/1.9.0",
     shell:
@@ -298,8 +302,7 @@ rule transdecoder_longorfs:
     input:
         "fasta/transcriptome.clean.fa",
     output:
-        "transdecoder/longest_orfs.gff3",
-        "transdecoder/longest_orfs.cds.best_candidates.gff3",
+        "transdecoder/longest_orfs.cds.best_candidates.gff3.revised_starts.gff3",
     conda:
         "envs/transdecoder.yaml"
     params:
@@ -311,12 +314,12 @@ rule transdecoder_longorfs:
         " -m {params.min_protein_length} "
         " {params.strand_specific};  "
         "TransDecoder.Predict -t {input} --output_dir {params.prefix} "
-        " --single_best_only " #"  --complete_orfs_only "
+        " --single_best_only " #"  
 
 
 rule cds_to_genome:
     input:
-        best="transdecoder/longest_orfs.cds.best_candidates.gff3",
+        best="transdecoder/longest_orfs.cds.best_candidates.gff3.revised_starts.gff3",
         gff="transdecoder/merged.clean.gff3",
         fa="fasta/transcriptome.clean.fa",
     output:
@@ -365,6 +368,8 @@ rule preprocess_counts:
         "data/drimseq_data.RDS"
     envmodules:
         "R/4.2.1_deb11",
+    resources:
+        mem_mb=16000
     script:
         "scripts/01_preprocess_counts.R"
 
@@ -378,6 +383,8 @@ rule combine_cds:
         "images/number_cds_per_source.png"    
     envmodules:
         "R/4.2.1_deb11",   
+    resources:
+        mem_mb=32000
     script:
         "scripts/02_combine_cds.R"
 
@@ -390,20 +397,10 @@ rule process_cds_seq:
         "data/cds_seq.RDS",
     envmodules:
         "R/4.2.1_deb11",   
+    resources:
+        mem_mb=32000
     script:
         "scripts/03_process_cds_seq.R"
-
-
-rule compute_dge:
-    input:
-        "data/gene_counts.RDS",
-    output:
-        "data/dge_results.RDS",
-        "results/dge_pca.pdf"
-    envmodules:
-        "R/4.2.1_deb11",
-    script:
-        "scripts/08_DGE.R"
 
 
 rule compute_dte:
@@ -415,8 +412,25 @@ rule compute_dte:
         "R/4.2.1_deb11",
     threads:
         10
+    resources:
+        mem_mb=32000
     script:
         "scripts/07_DTE.R"
+
+
+rule compute_dge:
+    input:
+        "data/gene_counts.RDS",
+    output:
+        "data/dge_results.RDS"
+    envmodules:
+        "R/4.2.1_deb11",
+    resources:
+        mem_mb=16000
+    script:
+        "scripts/08_DGE_nocovariates.R"
+
+
 
 # rule cds_task:
 #     input:
