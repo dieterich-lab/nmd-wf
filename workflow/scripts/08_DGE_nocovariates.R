@@ -1,3 +1,4 @@
+# see /beegfs/prj/Niels_Gehring/nmd_transcriptome/dge/deseq2.R
 suppressPackageStartupMessages({
   library(tidyverse)
   library(SummarizedExperiment)
@@ -7,38 +8,57 @@ suppressPackageStartupMessages({
   library(org.Hs.eg.db)
 })
 
-output <- 'dge_results/'
+snakemake@source('utils.R')
+set_here(path = "/prj/Niels_Gehring/nmd_transcriptome/phaseFinal")
+message(getwd())
 
-dds <- readRDS(here('phase2', 'data', 'dge_dds.RDS'))
-message(nrow(dds))
-keep <- rowSums(counts(dds) >= 10) >= 3
-dds <- dds[keep,]
-message(nrow(dds))
+message('Importing abundances')
+
+txi.genes <- readRDS(here("data", "gene_counts.RDS"))
+tx2gene <- readRDS(here("data", "tx2gene.RDS"))
+metadata <- readRDS(here("data", "metadata.RDS"))
+metadata <- as.data.frame(metadata)
+metadata$Knockout <- replace_na(metadata$Knockout, '_NoKO')
+metadata$Knockout <- str_replace(metadata$Knockout, '-', '')
+metadata$Knockdown <- str_c(metadata$Knockdown, 'KD')
+metadata$group <- metadata %>% 
+  dplyr::select(Knockdown, Knockout) %>%
+  unite(group, sep = '') %>% 
+  pull(group)
+metadata$cellline <- word(metadata$Cell_line, 1)
+metadata$group <- str_glue_data(metadata, "{cellline}{Knockout}_{Knockdown}-KD_{clone}", .na='')
+metadata$group <- gsub(x=metadata$group, "_$", '')
+metadata$group <- as.factor(metadata$group)
+
+dds <- DESeqDataSetFromTximport(
+  txi = txi.genes,
+  colData = metadata |> select('group'),
+  design = ~group)
+
+contrasts <- c(
+  'HEK_NoKO_SMG5KD-KD_Z023',
+  'HEK_NoKO_LucKD-KD_Z023',
+  'HEK_NoKO_SMG6+SMG7KD-KD_Z023',
+  'HEK_NoKO_LucKD-KD_Z023',
+  'HEK_SMG7KO_SMG5KD-KD_Z245',
+  'HEK_SMG7KO_LucKD-KD_Z245',
+  'HEK_SMG7KO_SMG6KD-KD_Z245',
+  'HEK_SMG7KO_LucKD-KD_Z245',
+  'HEK_SMG7KO_SMG5KD-KD_Z319',
+  'HEK_SMG7KO_LucKD-KD_Z319',
+  'HEK_SMG7KO_SMG6KD-KD_Z319',
+  'HEK_SMG7KO_LucKD-KD_Z319',
+  'HeLa_NoKO_SMG6+SMG7KD-KD_Z021',
+  'HeLa_NoKO_LucKD-KD_Z021',
+  'MCF7_NoKO_SMG6+SMG7KD-KD',
+  'MCF7_NoKO_LucKD-KD',
+  'U2OS_NoKO_SMG6+SMG7KD-KD',
+  'U2OS_NoKO_LucKD-KD')
+
+contrasts <-  as.data.frame(matrix(contrasts, ncol =2 ,byrow = T))
+message("Number of genes:", nrow(dds))
+
 dds <- DESeq(dds)
-
-contrasts <- data.frame(
-  treat=c(
-    "HEK_SMG5-KD_Z023",
-    "HEK_SMG7-KO_SMG5-KD_Z245",
-    "HEK_SMG7-KO_SMG6-KD_Z245",
-    "HEK_SMG7-KO_SMG5-KD_Z319",
-    "HEK_SMG7-KO_SMG6-KD_Z319",
-    "HEK_SMG6+SMG7-KD_Z023",
-    "HeLa_SMG6+SMG7-KD_Z021",
-    "U2OS_SMG6+SMG7-KD",
-    "MCF7_SMG6+SMG7-KD"),
-  control=c(
-    "HEK_Luc-KD_Z023",
-    "HEK_Luc-KD_Z023",
-    "HEK_Luc-KD_Z023",
-    "HEK_SMG7-KO_Luc-KD_Z319",
-    "HEK_SMG7-KO_Luc-KD_Z319",
-    "HEK_Luc-KD_Z023",
-    "HeLa_Luc-KD_Z021",
-    "U2OS_Luc-KD",
-    "MCF7_Luc-KD"
-  )) 
-
 
 results <- apply(contrasts, 1, function(x) {
   deseq_results(dds, x[1], x[2])
@@ -46,24 +66,6 @@ results <- apply(contrasts, 1, function(x) {
 names(results) <- paste0(contrasts$treat, '-vs-', contrasts$control)
 results <- bind_rows(results, .id='contrast') 
 
-results %<>% 
-  dplyr::rename(
-    gene_id_tmp=gene_id, 
-    gene_id=gene_name) %>% 
-  dplyr::rename(
-    gene_name=gene_id_tmp)
-
-write_rds(results, here('phase2/results/dge_results.rds'))
-
-
-# library(openxlsx)
-# wb <- createWorkbook()
-# addWorksheet(wb, sheetName='contrasts')
-# writeDataTable(wb, sheet = 'contrasts', as.data.frame(contrasts))
-#sheet=as.character(length(names(wb)) + 1)
-#addWorksheet(wb, sheetName=sheet)
-# session.info <- capture.output(sessionInfo())
-# addWorksheet(wb, 'session info')
-# writeDataTable(wb, sheet = 'session info', as.data.frame(session.info))
-# 
-# saveWorkbook(wb, here('phase2/results/dtu_results.xlsx'), overwrite=TRUE)
+tx2gene <- tx2gene %>% select(gene_id, gene_name) %>% distinct()
+results <- merge(results, tx2gene, all.x=TRUE)
+saveRDS(results,  "data/dge_results.RDS")
