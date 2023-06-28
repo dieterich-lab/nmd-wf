@@ -1,74 +1,118 @@
+#! /usr/bin/env Rscript
+## ---------------------------
+## Script name: cds_task.R
+## Purpose of script: Combined CDS from multiple sources and 
+## annotated the transcript PTC status
+## Author: Thiago Britto-Borges
+## Date Created: 2023-05-22
+## Copyright (c) Thiago Britto-Borges, DieterichLab 2023
+## Email: thiago.brittoborges@uni-heidelberg.de
 suppressPackageStartupMessages({
-  library(dplyr)
+  snakemake@source('utils.R')
+  
   library(plyranges)
   library(rtracklayer)
   library(GenomicFeatures)
   library(here)
+  library(dplyr)
 })
 
-snakemake@source('utils.R')
+# Read reference annotation, CDS sequence info, genes,and combined CDS data
+tx2gene <- readRDS("data/tx2gene.RDS")
+reference_annotation <- readRDS("phaseFinal/data/gtf.RDS")
+cds_sequence_info <- readRDS("phaseFinal/data/cds_seq.RDS")
+combined_cds <- readRDS('phaseFinal/data/combined_cds.RDS')
 
-ref <- readRDS(snakemake@input[[1]])
-cds_seq <- readRDS(snakemake@input[[2]])
-cds <- readRDS(snakemake@input[[3]])
+tx2gene <- tx2gene[tx2gene$keep, ]
+reference_annotation <- reference_annotation %>% filter(transcript_id %in% tx2gene$transcript_id) 
+cds_sequence_info <- cds_sequence_info %>% subset(transcript %in% tx2gene$transcript_id)
 
-cds$source <- factor(cds$source, levels = c(
+# Set levels of 'source' column and sort combined CDS data
+combined_cds$source <- factor(combined_cds$source, levels = c(
   "ensembl", "hek293gao", "ribotish", "openprot", "transdecoder"))
-cds <- sort(cds, by=~source, decreasing=FALSE, ignore.strand=FALSE)
+combined_cds <- sort(combined_cds, by = ~source, decreasing = FALSE, ignore.strand = FALSE)
 
-
-gr <- ref %>%  
+# Filter exons from reference annotation and select transcript IDs matching CDS sequence info
+exons <- reference_annotation %>%
   filter(type == 'exon') %>% 
-  plyranges::select(transcript_id) %>% 
-  filter(transcript_id %in% cds_seq$transcript)
+  plyranges::select(transcript_id) %>%
+  filter(transcript_id %in% cds_sequence_info$transcript)
 
-grl <- split(gr, ~transcript_id) 
-grl2 <- grl[lengths(runValue(strand(grl))) == 1 & lengths(runValue(seqnames(grl))) == 1]
-stopifnot(length(grl) == length(grl2))
-
-gr <- unlist2(grl)
-names(gr) <- NULL
-stopifnot(sum(lengths(grl)) == length(gr))
-stopifnot(isEmpty(setdiff(cds_seq$transcript, names(grl))))
-
-cds_seq$granges <- pmapFromTranscripts(cds_seq$ranges, grl[cds_seq$transcript] )
-
-tr <- pmapToTranscripts(gr, grl[gr$transcript_id])
-trl <- split(tr, seqnames(tr))
-
-all_cds <- readRDS("phase2/data/cds_seq.RDS")
-all_cds_t <- GRanges(seqnames = all_cds$transcript, all_cds$ranges, use.names = FALSE)
-all_cds_g <- pmapFromTranscripts(all_cds_t, grl[seqnames(all_cds_t)] )
-
-meta <- mcols(all_cds_g)
-mcols(all_cds_g) <- NULL
-
-hits <- findOverlaps(
-  all_cds_g %>% unlist2() %>% anchor_5p() %>% mutate(width = 3),
-  cds %>% anchor_5p() %>% mutate(width = 3),
-  select = 'first'
+# Split the filtered exons by transcript ID
+exons_by_transcript <- split(exons, ~transcript_id)
+# Map exons coordinates to cDNA 
+exons_t <- pmapToTranscripts(
+  exons,
+  exons_by_transcript[exons$transcript_id]
 )
+exons_t <- sort(exons_t)
 
-res <- DataFrame(
-  cds = all_cds_g[!is.na(hits)],
-  source = cds[ hits[!is.na(hits)], ]$source,
-  transcript = names(grl)[meta$transcriptsHits[!is.na(hits)]],
-  cds_id = all_cds_names[ meta$xHits[!is.na(hits)]],
-  cds_tx_pos = all_cds[meta$xHits[!is.na(hits)]]
-)
+cds_granges <- GRanges(cds_sequence_info$transcript, cds_sequence_info$ranges)
+cds_granges <- mapFromTranscripts(
+  cds_granges, 
+  exons_by_transcript)
+cds_granges2 <- pintersect(
+  exons_by_transcript[cds_granges$transcriptsHits],
+  cds_granges,
+  drop.nohit.ranges=TRUE)
+names(cds_granges2) <- names(cds_granges)
+cds_granges <- cds_granges2
+rm(cds_granges2)
 
-grl <- grl[res$transcript]
-grl2 <- unlist(grl)
-grl2 <- pmapToTranscripts(grl2, grl[names(grl2)])
-res$grl <- unname(grl2[res$transcript])
-res$stop <- res$cds %>% end() %>% unlist2()
-res$last_ejc <- res$grl %>% tails(2) %>% heads(1) %>% end() %>% unlist2()
-res$ptc <- res$last_ejc - 1 - res$stop > 50 
+cds_tranges <- GRanges(
+  cds_sequence_info$transcript, 
+  cds_sequence_info$ranges)
+cds_tranges$cds_id <- names(cds_tranges)
 
-table(res$source, res$ptc) %>% 
-  kbl() %>% 
-  kable_styling()
+cds_tranges2 <- findOverlapPairs(
+  cds_tranges,
+  exons_t,
+  ignore.strand=TRUE)
+cds_tranges2 <- pintersect(cds_tranges2)
 
-saveRDS(res, here('data', '02_task_simple.RDS'))
+exons_t <- split(ranges(exons_t), seqnames(exons_t))
+stopifnot(all(all(exons_t %>% heads(1) %>% start() == 1)))
+cds_tranges <- split(ranges(cds_tranges2), names(cds_tranges2))
+rm(cds_tranges2)
+
+cds_sequence_info$cds_granges <- cds_granges[cds_sequence_info$cds_id]
+cds_sequence_info$cds_tranges <- cds_tranges[cds_sequence_info$cds_id]
 
 
+# Filter out transcripts with unique strand and seqnames
+filtered_exons_by_transcript <- exons_by_transcript[
+  lengths(runValue(strand(exons_by_transcript))) == 1 &
+    lengths(runValue(seqnames(exons_by_transcript))) == 1]
+
+# Ensure the number of filtered exons and exons with unique strand and seqnames match
+stopifnot(length(exons_by_transcript) == length(filtered_exons_by_transcript))
+
+# Check if the total number of exons in filtered exons matches the number of exons in the original dataset
+stopifnot(sum(lengths(filtered_exons_by_transcript)) == length(exons))
+
+# Check if all transcript IDs in CDS sequence info are present in the filtered exons
+stopifnot(isEmpty(setdiff(cds_sequence_info$transcript, names(filtered_exons_by_transcript))))
+rm(filtered_exons_by_transcript)
+
+# Anchor the all CD  to their start codon and add info as metadata
+
+# we dont need this column anymore because we have cds_tranges (spliced and ungapped)
+cds_sequence_info$ranges <- NULL
+query_granges <- cds_sequence_info$cds_granges %>% range() %>% unlist() %>% anchor_5p() %>% mutate(width = 3)
+mcols(query_granges) <- cds_sequence_info
+
+# Anchor the CDS from sources to their start codon and annotatea with gene names
+subject_granges <- combined_cds %>% anchor_5p() %>% mutate(width = 3)
+
+# Perform join between CDS from sources and all CDS with a minimum overlap of 3
+result <- join_overlap_intersect_directed(query_granges, subject_granges, minoverlap = 3)
+result <- mcols(result)
+
+stopifnot(all(sum(width(result$cds_granges)) == width(result$cds_seq)))
+
+result$leej <- exons_t[result$transcript] %>% tails(1) %>% start() - 3
+result$stop_pos <- result$cds_tranges %>% tails(1) %>% end() %>% unlist2()
+# +3 because the CDS does not include the stop codon
+result$ptc <- unlist(result$leej) - unlist(result$stop_pos) > 50 + 3
+
+saveRDS(result, snakemake@output[[1]])
