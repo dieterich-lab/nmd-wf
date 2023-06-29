@@ -10,7 +10,7 @@ suppressPackageStartupMessages({
 d <- readRDS("data/drimseq_data.RDS")
 
 BPPARAM <- SnowParam(
-  workers = 10,
+  workers = 20,
   type = "SOCK",
   progressbar = TRUE,
   RNGseed = 123, 
@@ -24,7 +24,7 @@ dxd <- DEXSeqDataSet(
   groupID = counts(d)$gene_id
 )
 dxd <- estimateSizeFactors(dxd)
-dxd <- estimateDispersions(dxd, quiet = TRUE, BPPARAM=BPPARAM)
+dxd <- estimateDispersions(dxd, quiet = FALSE, BPPARAM=BPPARAM)
 fullModel <- ~ sample + exon + group:exon
 reducedModel <- ~ sample + exon
 
