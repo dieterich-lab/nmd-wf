@@ -58,12 +58,12 @@ extract_start <- function(seqs, mature_rna_position) {
 }
 
  
-flag_ptc <- function(x) {
-  leej <- x$cdna_blocks |>
+flag_ptc <- function(.x) {
+  leej <- .x$cdna_blocks |>
     tails(1) |>
     start() - 3 |>
     unlist()
-  stop_pos <- x$cdna_thick |>
+  stop_pos <- .x$cdna_thick |>
     tails(1) |>
     end()
   empty_stop <- lapply(stop_pos, isEmpty) |> unlist()
@@ -194,40 +194,11 @@ bed12_format <- add_cdna_blocks(bed12_format)
 bed12_format$is_ptc <- flag_ptc(bed12_format) > 50
 bed12_format$itemRgb <- ifelse(bed12_format$is_ptc, 'red', 'black')
 
-# bed12_format$blocks <- NULL
-# bed12_format$cdna_blocks <- lapply(unname(bed12_format$cdna_blocks), as.data.frame)
-# bed12_format$thick <- bed12_format$thick %>% unname() %>% unlist() %>% as.character()
-# bed12_format$thick <- bed12_format$thick %>% unname() %>%  unlist()
-# bed12_format$cdna_thick <- lapply(unname(bed12_format$cdna_thick), as.data.frame)
-# bed12_format$cdna_thick %>% range() %>% unname() %>% unlist() %>% as.data.frame()
 bed12_format <- rtracklayer:::sortBySeqnameAndStart(bed12_format)
 bed12_format$source <- factor('canonical', levels = c("canonical", "ensembl", "riboseq",  "openprot"))
 bed12_format$thick <- unlist(bed12_format$thick)
-
-# bed12_format <- as.data.frame(bed12_format)
-
-# Sort by sequence name and start
-# saveRDS(bed12_format, 'phaseFinal/ensembl_canonical.RDS')
-
-# parse_start_codons <- function(file, source){
-#   x <- Biostrings::readAAStringSet(file)
-#   input_string <- names(x)
-#   values <- str_extract_all(input_string, "[A-Z0-9.]+|\\d+|\\+|ATG")
-#   df <- as.data.frame(do.call(rbind, values))
-#   colnames(df) <- c("ENST_ID", "length", "start", "end", "orientation", "ATG", "ATG_position", "tx_length")
-#   df$ATG <- NULL
-#   df$orientation <- NULL
-#   df$source <- source
-#   df$sequence <- as.character(unname(x))
-#   df
-# }
-
-# df0 <-  mcols(tx)[, c('name', 'length', 'source')] %>%
-#   as_tibble() %>%
-#   mutate(length = as.character(length)) %>%
-#   rename(ENST_ID = name)
-# 
-# df0 <- df0 %>% mutate(length = as.character(length))
+# removes stop codon from CDS canonical sources
+bed12_format$thick <- resize(bed12_format$thick, width = width(bed12_format$thick) - 2)
 
 load_orfs_data <- function(input_file = "longorf2_output.bed") {
   # 1. Import the bed file
@@ -260,7 +231,6 @@ load_orfs_data <- function(input_file = "longorf2_output.bed") {
 
 
 ## Read longorf2 output 
-
 longorf2 <- import('phaseFinal/cds_task_christoph/longorf2_output.bed')
 read_and_process_seqs <- function(filepath, source) {
   # Read the DNA or AA StringSet depending on the file extension
@@ -312,22 +282,30 @@ longorf_unique <- longorf %>%
 
 longorf_final <- asBED(txdb[longorf_unique$id])
 longorf_final$source <- longorf_unique$source
-# longorf_final$cds_id <- make.unique(as.character(longorf_final$name), '_')
 longorf_final$cdna_thick <- IRanges(as.integer(longorf_unique$ATG_position), as.integer(longorf_unique$end))
 longorf_final <- add_cdna_blocks(longorf_final)
-thick <- mapFromTranscripts(
+# thick <- pmapFromTranscripts(
+#   GRanges(longorf_final$name, longorf_final$cdna_thick), txdb[longorf_final$name])
+
+thick <- pmapFromTranscripts(
   GRanges(longorf_final$name, longorf_final$cdna_thick), txdb[longorf_final$name])
-thick <- unique(thick)
-longorf_final$thick <- IRanges(1, width = 0) 
-longorf_final[thick$xHits, ]$thick <- ranges(thick)
+thick_id <- rep(seq(thick), lengths(thick))
+thick <- unlist(thick)
+thick$id <- thick_id
+thick <- subset(thick, hit == TRUE)
+thick <- split(thick, ~id)
+thick_tx <- heads(thick, 1) %>% unlist() %>% mcols()
+thick <- range(thick) 
+thick <- unlist(thick)
+mcols(thick) <- thick_tx
+
+longorf_final$thick <- thick
 longorf_final$is_ptc <- flag_ptc(longorf_final) > 50
 longorf_final$itemRgb <- ifelse(longorf_final$is_ptc, 'red', 'black')
+longorf_final$thick <- ranges(longorf_final$thick)
 longorf_final <- longorf_final[
   start(longorf_final) < start(longorf_final$thick) &
     end(longorf_final) > end(longorf_final$thick)]
-
-
-
 
 write_bed12(
   bed12_format, 'phaseFinal/data/canonical.bb')
@@ -338,12 +316,17 @@ write_bed12(
 write_bed12(
   subset(longorf_final, source == 'openprot'), 'phaseFinal/data/openprot.bb')
 
+final <- c(bed12_format, longorf_final)
+final$blocks <- NULL
+final$cdna_blocks <- lapply(unname(final$cdna_blocks), as.data.frame)
+final$cdna_thick <- range(final$cdna_thick) %>% as.data.frame() %>% select(-c(group, group_name))
+final$thick <- as.character(final$thick) %>% unname()
+final <- rtracklayer:::sortBySeqnameAndStart(final)
+final <- as.data.frame(final)
+saveRDS(final, 'phaseFinal/longorf_bed12.RDS')
+load('longorf_integration_bed12.Rdata')
 
-x <- c(bed12_format, longorf_final)
-x$blocks <- NULL
-x$cdna_blocks <- lapply(unname(x$cdna_blocks), as.data.frame)
-x$cdna_thick <- range(x$cdna_thick) %>% as.data.frame() %>% select(-c(group, group_name))
-x$thick <- as.character(x$thick) %>% unname()
-x <- rtracklayer:::sortBySeqnameAndStart(x)
-x <- as.data.frame(x)
-saveRDS(x, 'phaseFinal/longorf_bed12.RDS')
+dist <- data.frame(
+  name = longorf_final$name,
+  dist=flag_ptc(longorf_final)
+)
