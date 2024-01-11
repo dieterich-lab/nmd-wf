@@ -37,7 +37,7 @@ Rscript cds/StartATG_to_cDNA.R ref_cds.bed
 perl longorf2_fwd_v2.pl --input GRCh38.102.fa --startcodon ref_cds_cDNA.bed > ensembl_longorf2.fa 
 ```
 
-See [longorf_integration_bed12](longorf_integration_bed12.R) script, which details how the multiple source integration is done. 
+See [longorf_integration_bed12](cds/longorf_integration_bed12.R) script, which details how the multiple source integration is done. 
 
 ## License
 
