@@ -366,36 +366,7 @@ rule preprocess_counts:
     resources:
         mem_mb=16000
     script:
-        "scripts/01_preprocess_counts.R"
-
-
-rule combine_cds:
-    input:
-        "data/gtf.RDS",
-        config["ref"]
-    output:
-        "data/combined_cds.RDS",
-        "images/number_cds_per_source.png"    
-    envmodules:
-        "R/4.2.1_deb11",   
-    resources:
-        mem_mb=32000
-    script:
-        "scripts/02_combine_cds.R"
-
-
-rule process_cds_seq:
-    input:
-        "fasta/transcriptome.fa",
-        "data/tx2gene.RDS"
-    output:
-        "data/cds_seq.RDS",
-    envmodules:
-        "R/4.2.1_deb11",   
-    resources:
-        mem_mb=32000
-    script:
-        "scripts/03_process_cds_seq.R"
+        "scripts/preprocess_counts.R"
 
 
 rule compute_dte:
@@ -410,7 +381,7 @@ rule compute_dte:
     resources:
         mem_mb=32000
     script:
-        "scripts/07_DTE.R"
+        "scripts/DTE.R"
 
 
 rule compute_dge:
@@ -423,4 +394,4 @@ rule compute_dge:
     resources:
         mem_mb=16000
     script:
-        "scripts/08_DGE_nocovariates.R"
+        "scripts/DGE.R"
