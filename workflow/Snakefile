@@ -1,5 +1,5 @@
 """
-Usage:
+Internal usage:
 conda activate /home/tbrittoborges/miniconda3/envs/snakemake
 snakemake --jobs 10 --cores 10 --profile slurm --printshellcmds --reason --use-singularity --use-conda --use-envmodule
 snakemake --rulegraph | dot -Tsvg > rulegraph.sv
@@ -78,10 +78,6 @@ rule symlink:
         ):
             symlink(bam_in, bam_out)
             symlink(bai_in, bai_out)
-
-
-        # The pcDNA5 contig is given problems
-
 
 
 rule create_selected_region:
@@ -297,7 +293,6 @@ rule salmon_quant:
         "-o salmon/{wildcards.name}/ "
 
 
-## Transdecoder
 rule transdecoder_longorfs:
     input:
         "fasta/transcriptome.clean.fa",
@@ -429,16 +424,3 @@ rule compute_dge:
         mem_mb=16000
     script:
         "scripts/08_DGE_nocovariates.R"
-
-
-
-# rule cds_task:
-#     input:
-#         "data/gtf.RDS",
-#         "data/cds_seq.RDS",
-#         "data/combined_cds.RDS",
-#         data/cds_seq.RDS
-
-# 06_annotate_ptc.R
-# 07_igv_anno.R
- # 08_DTE.R
