@@ -1,4 +1,4 @@
-source('phaseFinal/scripts/plot_utils.R')
+source('plot_utils.R')
 
 library(circlize)
 library(ComplexHeatmap)
@@ -37,11 +37,11 @@ us <- UpSet(
   )
 )
 
-png("fig3.png")
+png("fig11.png")
 draw(us)
 dev.off()
 
-pdf(file="fig3.pdf",
+pdf(file="fig11.pdf",
     width = 7.87402,
     height = 5.51181,
     useDingbats = FALSE

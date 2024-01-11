@@ -1,4 +1,4 @@
-source('phaseFinal/scripts/plot_utils.R')
+source('plot_utils.R')
 
 
 unnested_source <- db[["anno"]] %>% unnest(source)
@@ -40,13 +40,13 @@ dte %>%
   summarise(n = n())
 
 ggsave(
-  "fig5.pdf", 
+  "fig4.pdf", 
   width = 10, 
   height = 7, 
   dpi = 300)
 
 ggsave(
-  "fig5.png", 
+  "fig4.png", 
   width = 10, 
   height = 7, 
   dpi = 300)

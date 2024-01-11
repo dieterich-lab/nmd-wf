@@ -1,4 +1,4 @@
-source('phaseFinal/scripts/plot_utils.R')
+source('plot_utils.R')
 
 x <- left_join(db[["anno"]], db[["bed12"]], by = c("transcript_id"="name")) %>%
   distinct(transcript_id, .keep_all = TRUE) %>%

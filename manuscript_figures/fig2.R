@@ -1,4 +1,4 @@
-source('phaseFinal/scripts/plot_utils.R')
+source('plot_utils.R')
 
 x <- left_join(
   db[["bed12"]], db$anno %>% select(transcript_id, match),
