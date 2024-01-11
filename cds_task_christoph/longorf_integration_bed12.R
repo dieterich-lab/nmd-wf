@@ -198,7 +198,16 @@ bed12_format <- rtracklayer:::sortBySeqnameAndStart(bed12_format)
 bed12_format$source <- factor('canonical', levels = c("canonical", "ensembl", "riboseq",  "openprot"))
 bed12_format$thick <- unlist(bed12_format$thick)
 # removes stop codon from CDS canonical sources
+bed12_format[strand(bed12_format) == '-']$thick <- shift(
+  bed12_format[strand(bed12_format) == '-']$thick, 2)
+
+bed12_format[strand(bed12_format) == '+']$thick <- resize(
+  bed12_format[strand(bed12_format) == '+']$thick, 
+  width(bed12_format[strand(bed12_format) == '+']$thick) - 1, 
+  fix = "end")
+
 bed12_format$thick <- resize(bed12_format$thick, width = width(bed12_format$thick) - 2)
+bed12_format <- bed12_format[width(bed12_format$thick) > 1]
 
 load_orfs_data <- function(input_file = "longorf2_output.bed") {
   # 1. Import the bed file
@@ -284,8 +293,6 @@ longorf_final <- asBED(txdb[longorf_unique$id])
 longorf_final$source <- longorf_unique$source
 longorf_final$cdna_thick <- IRanges(as.integer(longorf_unique$ATG_position), as.integer(longorf_unique$end))
 longorf_final <- add_cdna_blocks(longorf_final)
-# thick <- pmapFromTranscripts(
-#   GRanges(longorf_final$name, longorf_final$cdna_thick), txdb[longorf_final$name])
 
 thick <- pmapFromTranscripts(
   GRanges(longorf_final$name, longorf_final$cdna_thick), txdb[longorf_final$name])
@@ -323,10 +330,11 @@ final$cdna_thick <- range(final$cdna_thick) %>% as.data.frame() %>% select(-c(gr
 final$thick <- as.character(final$thick) %>% unname()
 final <- rtracklayer:::sortBySeqnameAndStart(final)
 final <- as.data.frame(final)
-saveRDS(final, 'phaseFinal/longorf_bed12.RDS')
-load('longorf_integration_bed12.Rdata')
+final_unique <- final %>% 
+  group_by(name, thick) %>% 
+  arrange(source, .by_group = TRUE) %>% 
+  slice(1) %>% 
+  ungroup()
 
-dist <- data.frame(
-  name = longorf_final$name,
-  dist=flag_ptc(longorf_final)
-)
+saveRDS(final_unique, 'phaseFinal/longorf_bed12.RDS')
+save.image('longorf_integration_bed12.Rdata')

@@ -1,9 +1,10 @@
-
+cds_task_christoph/*
 .here
 .snakemake/
 *.pdf
 *.gtf
 *.bed
+*.RDS
 slurm-*.out
 pipeliner.*.cmds
 transcriptome.clean.fa.transdecoder.*
@@ -28,3 +29,6 @@ transdecoder.__checkpoints/
 transdecoder.__checkpoints_longorfs/
 transdecoder/
 workflow/.snakemake/
+*.out
+*.error
+*DS_Store

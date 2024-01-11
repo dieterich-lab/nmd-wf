@@ -12,7 +12,6 @@ suppressPackageStartupMessages({
   
   library(plyranges)
   library(rtracklayer)
-  library(GenomicFeatures)
   library(here)
   library(dplyr)
 })
