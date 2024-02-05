@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/github/license/dieterich-lab/nmd-wf)](LICENSE)
 [![GitHub issues](https://img.shields.io/github/issues/dieterich-lab/nmd-wf)](https://github.com/dieterich-lab/nmd-wf/issues)
 
-This repository exists for reproducibility purpose. The data generated on this workflow powers the [NMDtxDB](https://github.com/dieterich-lab/nmdtxdb). Raw data is available at the SRA [PRJNA1054031](https://www.ncbi.nlm.nih.gov/sra/PRJNA1054031). RNA-seq reads need to be pre-processed and alignment before. 
+This repository exists for reproducibility purpose. The data generated on this workflow powers the [NMDtxDB](https://github.com/dieterich-lab/nmdtxdb). Raw data is available at the SRA [PRJNA1054031](https://www.ncbi.nlm.nih.gov/sra/PRJNA1054031). RNA-seq reads need to be pre-processed and aligned. 
 
 ## Workflow description
 
