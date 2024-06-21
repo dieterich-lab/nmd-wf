@@ -23,8 +23,8 @@ dxd <- DEXSeqDataSet(
   featureID = counts(d)$feature_id,
   groupID = counts(d)$gene_id
 )
-# dxd <- estimateSizeFactors(dxd)
-# dxd <- estimateDispersions(dxd, quiet = FALSE)
+dxd <- estimateSizeFactors(dxd)
+dxd <- estimateDispersions(dxd, quiet = FALSE)
 fullModel <- ~ sample + exon + group:exon
 reducedModel <- ~ sample + exon
 
