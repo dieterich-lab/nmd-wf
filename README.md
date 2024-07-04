@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/github/license/dieterich-lab/nmd-wf)](LICENSE)
 [![GitHub issues](https://img.shields.io/github/issues/dieterich-lab/nmd-wf)](https://github.com/dieterich-lab/nmd-wf/issues)
 
-This repository exists for reproducibility purpose. The data generated on this workflow powers the [NMDtxDB](https://github.com/dieterich-lab/nmdtxdb). Raw data is available at the SRA [PRJNA1054031](https://www.ncbi.nlm.nih.gov/sra/PRJNA1054031). RNA-seq reads need to be pre-processed and alignment before. 
+This repository exists for reproducibility purpose. The data generated on this workflow powers the [NMDtxDB](https://github.com/dieterich-lab/nmdtxdb). Raw data is available at the SRA [PRJNA1054031](https://www.ncbi.nlm.nih.gov/sra/PRJNA1054031). RNA-seq reads need to be pre-processed and alignment before input. 
 
 ## Workflow description
 
@@ -29,7 +29,6 @@ This refers to the workflow for CDS detection. Here an example using sequences t
 
 
 ```{bash}
-
 awk '{ print $1 "\t" $7-1 "\t" $8 "\t" $4 "\t" 1 "\t" $6; }' GRCh38.102.gtf > ref_cds.bed
 
 Rscript cds/StartATG_to_cDNA.R ref_cds.bed
@@ -38,6 +37,12 @@ perl longorf2_fwd_v2.pl --input GRCh38.102.fa --startcodon ref_cds_cDNA.bed > en
 ```
 
 See [longorf_integration_bed12](cds/longorf_integration_bed12.R) script, which details how the multiple source integration is done. 
+
+To retrieve the other sources:
+```
+wget https://ftp.ebi.ac.uk/pub/databases/gencode/riboseq_orfs/data/Ribo-seq_ORFs.bed
+https://api.openprot.org/api/2.0/HS/downloads/human-openprot-2_0-refprots+altprots+isoforms-uniprot2017_03_07.bed.zip
+```
 
 ## License
 
