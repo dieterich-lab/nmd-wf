@@ -1,0 +1,129 @@
+"""
+source /biosw/__modules__/modules.rc; module load slurm-tools R
+mamba activate /home/tbrittoborges/miniconda3/envs/snakemake
+snakemake --use-envmodules --use-conda --dry-run
+snakemake --use-envmodules --use-conda --profile slurm -c 4
+"""
+
+import pandas as pd
+
+configfile: "config.yml"
+
+accession = pd.read_table(config["run_accession_list"], header=None).iloc[:, 0]
+
+rule all:
+    input:
+        expand("data/pe/{accession}_1.fastq.gz", accession=accession),
+        expand("salmon/{accession}/quant.sf", accession=accession),
+        "data/gtf.RDS",
+        "data/gene_counts.RDS",
+        "data/dge_results.RDS",
+        "data/dte_results.RDS"
+
+
+rule fetch_metadata:
+    input:
+        config["run_accession_list"]
+    output:
+        "metadata.csv"
+    conda:
+        "envs/kingfisher.yaml"
+    shell:
+        "kingfisher annotate --run-accession-list {input} -o {output} -f csv"
+
+rule get_fastq_pe_gz:
+    output:
+        # the wildcard name must be accession, pointing to an SRA number
+        "data/pe/{accession}_1.fastq.gz", 
+        "data/pe/{accession}_2.fastq.gz",
+    log:
+        "logs/pe/{accession}.gz.log",
+    params:
+        extra="--skip-technical",
+    threads: 6
+    wrapper:
+        "v3.12.1/bio/sra-tools/fasterq-dump"
+
+
+rule salmon_quant:
+    input:
+        r1="data/pe/{accession}_1.fastq.gz",
+        r2="data/pe/{accession}_2.fastq.gz",
+        index=config["salmon_index"],
+    output:
+        "salmon/{accession}/quant.sf",
+    log:
+        "logs/salmon/{accession}.log",
+    threads: 20
+    resources:
+        mem_mb=32000,
+    envmodules:
+        "salmon/1.9.0",
+    shell:
+        "salmon quant -p {threads} -i {input.index} "
+        "--libType A "
+        "--gcBias --numGibbsSamples 20 --thinningFactor 100 --validateMappings "
+        "-1 <(gunzip -c {input.r1}) "
+        "-2 <(gunzip -c {input.r2}) "
+        "-o salmon/{wildcards.accession}/ "
+
+
+rule process_gtf:
+    input:
+        config["gtf"]
+    output:
+        gtf="data/gtf.RDS",
+        tx2gene="data/tx2gene.RDS",
+    envmodules:
+        "R/4.3.1_deb12",
+    log:
+        "logs/process_gtf.log",
+    script:
+        "scripts/smk_process_gtf.R"
+    
+
+rule preprocess_counts:
+    input:
+        expand("salmon/{accession}/quant.sf", accession=accession),
+        tx2gene="data/tx2gene.RDS",
+    output:
+        gene_counts="data/gene_counts.RDS",
+        drimseq_data="data/drimseq_data.RDS",
+        tx_counts="data/tx_counts.RDS",
+        metadata="data/metadata.RDS",
+    envmodules:
+        "R/4.3.1_deb12",
+    resources:
+        mem_mb=16000
+    script:
+        "scripts/smk_preprocess_counts.R"
+
+    
+rule compute_dte:
+    input:
+        "data/drimseq_data.RDS",
+    output:
+        "data/dte_results.RDS"
+    envmodules:
+        "R/4.3.1_deb12",
+    threads:
+        10
+    resources:
+        mem_mb=32000
+    script:
+        "scripts/smk_DTE.R"
+
+
+rule compute_dge:
+    input:
+        "data/gene_counts.RDS",
+        "data/tx2gene.RDS",
+        "data/metadata.RDS",
+    output:
+        "data/dge_results.RDS"
+    envmodules:
+        "R/4.3.1_deb12",
+    resources:
+        mem_mb=16000
+    script:
+        "scripts/smk_DGE.R"

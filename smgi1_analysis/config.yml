@@ -1,0 +1,18 @@
+comparisons:
+  SMG1i-vs-DMSO:
+    - SMG1i: [SRR13016575, SRR13016578]
+    - DMSO: [SRR13016587, SRR13016610]
+
+min_samps_feature_prop: 1
+min_feature_prop: 0.10
+min_samps_feature_expr: 1
+min_feature_expr: 1
+min_samps_gene_expr: 1
+min_gene_expr: 1
+run_gene_twice: True
+metadata_file: "metadata.csv"
+run_accession_list: "sra_ids.txt"
+PRJ_ID: "PRJNA123456"
+salmon_index: "/beegfs/prj/Niels_Gehring/nmd_transcriptome/phaseFinal/salmon/transcriptome_index"
+gtf: "/beegfs/prj/Niels_Gehring/nmd_transcriptome/phaseFinal/stringtie_merge/merged_each.fix.gtf"
+
